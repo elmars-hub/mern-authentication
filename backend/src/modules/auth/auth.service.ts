@@ -4,13 +4,27 @@ import type {
   LoginDto,
   RegisterDto,
 } from "../../common/interfaces/auth.interface.js";
-import { BadRequestException } from "../../common/utils/catch-error.js";
-import { fortyFiveMinutesFromNow } from "../../common/utils/date-time.js";
+import {
+  BadRequestException,
+  UnauthorizedException,
+} from "../../common/utils/catch-error.js";
+import {
+  calculateExpirationDate,
+  fortyFiveMinutesFromNow,
+  ONE_DAY_IN_MS,
+} from "../../common/utils/date-time.js";
 import UserModel from "../../database/models/user.model.js";
 import SessionModel from "../../database/models/session.model.js";
 import VerificationCodeModel from "../../database/models/verification.js";
 import jwt from "jsonwebtoken";
+import type { StringValue } from "ms";
 import config from "../../config/app.config.js";
+import {
+  signJwtToken,
+  verifyJwtToken,
+  refreshTokenSignOptions,
+  type RefreshTPayload,
+} from "../../common/utils/jwt.js";
 
 export class AuthService {
   public async register(registerData: RegisterDto) {
@@ -56,7 +70,7 @@ export class AuthService {
 
     if (!user) {
       throw new BadRequestException(
-        "User not found",
+        "Invalid email or password provided",
         ErrorCode.AUTH_USER_NOT_FOUND,
       );
     }
@@ -81,7 +95,7 @@ export class AuthService {
       config.JWT.SECRET,
       {
         audience: ["user"],
-        expiresIn: config.JWT.EXPIRES_IN,
+        expiresIn: config.JWT.EXPIRES_IN as StringValue,
       },
     );
 
@@ -90,7 +104,7 @@ export class AuthService {
       config.JWT.REFRESH_SECRET,
       {
         audience: ["user"],
-        expiresIn: config.JWT.REFRESH_EXPIRES_IN,
+        expiresIn: config.JWT.REFRESH_EXPIRES_IN as StringValue,
       },
     );
 
@@ -99,6 +113,57 @@ export class AuthService {
       accessToken,
       refreshToken,
       mfaRequired: false,
+    };
+  }
+
+  public async refreshToken(refreshToken: string) {
+    const { payload, error } = verifyJwtToken<RefreshTPayload>(refreshToken, {
+      secret: refreshTokenSignOptions.secret,
+    });
+
+    if (error || !payload) {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    const session = await SessionModel.findById(payload.sessionId);
+    const now = Date.now();
+
+    if (!session) {
+      throw new UnauthorizedException("Session does not exist");
+    }
+
+    if (session.expiresAt.getTime() <= now) {
+      throw new UnauthorizedException("Session expired");
+    }
+
+    const sessionRequireRefresh =
+      session.expiresAt.getTime() - now <= ONE_DAY_IN_MS;
+
+    if (sessionRequireRefresh) {
+      session.expiresAt = calculateExpirationDate(
+        config.JWT.REFRESH_EXPIRES_IN,
+      );
+
+      await session.save();
+    }
+
+    const newRefreshToken = sessionRequireRefresh
+      ? signJwtToken(
+          {
+            sessionId: session._id,
+          },
+          refreshTokenSignOptions,
+        )
+      : undefined;
+
+    const accessToken = signJwtToken({
+      userId: session.userId,
+      sessionId: session._id,
+    });
+
+    return {
+      accessToken,
+      newRefreshToken,
     };
   }
 }

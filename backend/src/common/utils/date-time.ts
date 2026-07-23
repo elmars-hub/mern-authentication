@@ -17,14 +17,17 @@ export const threeMinutesAgo = (): Date => new Date(Date.now() - 3 * 60 * 1000);
 export const anHourFromNow = (): Date => new Date(Date.now() + 60 * 60 * 1000);
 
 export const calculateExpirationDate = (expiresIn: string = "15m"): Date => {
-  // Match number + unit (m = minutes, h = hours, d = days)
-  const match = expiresIn.match(/^(\d+)([mhd])$/);
-  if (!match) throw new Error('Invalid format. Use "15m", "1h", or "2d".');
+  // Match number + unit (s = seconds, m = minutes, h = hours, d = days)
+  const match = expiresIn.match(/^(\d+)([smhd])$/);
+  if (!match)
+    throw new Error('Invalid format. Use "30s", "15m", "1h", or "2d".');
   const [, value, unit] = match;
   const expirationDate = new Date();
 
   // Check the unit and apply accordingly
   switch (unit) {
+    case "s": // seconds
+      return add(expirationDate, { seconds: parseInt(value!) });
     case "m": // minutes
       return add(expirationDate, { minutes: parseInt(value!) });
     case "h": // hours
@@ -32,6 +35,6 @@ export const calculateExpirationDate = (expiresIn: string = "15m"): Date => {
     case "d": // days
       return add(expirationDate, { days: parseInt(value!) });
     default:
-      throw new Error('Invalid unit. Use "m", "h", or "d".');
+      throw new Error('Invalid unit. Use "s", "m", "h", or "d".');
   }
 };
