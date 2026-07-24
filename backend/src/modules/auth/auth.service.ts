@@ -8,7 +8,6 @@ import {
   BadRequestException,
   HttpException,
   InternalServerErrorException,
-  NotFoundException,
   UnauthorizedException,
 } from "../../common/utils/catch-error.js";
 import {
@@ -61,7 +60,7 @@ export class AuthService {
     const userId = newUser._id;
 
     // create a verification code
-    const verification = await VerificationCodeModel.create({
+    const verification = await VerificationModel.create({
       userId,
       type: VerificationEnum.EMAIL_VERIFICATION,
       expiresAt: fortyFiveMinutesFromNow(),
@@ -69,10 +68,20 @@ export class AuthService {
 
     // sending verification email link
     const verificationUrl = `${config.APP_ORIGIN}/confirm-account?code=${verification.code}`;
-    await sendEmail({
+    const { data: emailData, error: emailError } = await sendEmail({
       to: newUser.email,
       ...verifyEmailTemplate(verificationUrl),
     });
+
+    if (!emailData || emailError) {
+      await VerificationModel.findByIdAndDelete(verification._id);
+      await UserModel.findByIdAndDelete(userId);
+      throw new InternalServerErrorException(
+        "Failed to send verification email",
+        HTTPSTATUS.INTERNAL_SERVER_ERROR,
+        ErrorCode.INTERNAL_SERVER_ERROR,
+      );
+    }
 
     return {
       user: newUser,
@@ -222,7 +231,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new NotFoundException("User not found");
+      return;
     }
 
     //check mail rate limit is 2 email per 3mins or 10mins interval
@@ -249,7 +258,7 @@ export class AuthService {
       expiresAt,
     });
 
-    const resetLink = `${config.APP_ORIGIN}/reset-password?code=${validCode.code}&exp${expiresAt.getTime()}`;
+    const resetLink = `${config.APP_ORIGIN}/reset-password?code=${validCode.code}&exp=${expiresAt.getTime()}`;
 
     // TODO: Send email with reset link
     // await sendEmail(user.email, "Password Reset", `Click here to reset your password: ${resetLink}`);
@@ -259,7 +268,7 @@ export class AuthService {
       ...passwordResetTemplate(resetLink),
     });
 
-    if (!data) {
+    if (!data || error) {
       throw new InternalServerErrorException(
         "Failed to send password reset email",
         HTTPSTATUS.INTERNAL_SERVER_ERROR,

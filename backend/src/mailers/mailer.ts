@@ -12,7 +12,7 @@ type Params = {
 const mailer_sender =
   config.NODE_ENV === "development"
     ? "no-reply <onboarding@resend.dev>"
-    : `no-reply <${config.MAILER.SENDER}`;
+    : `no-reply <${config.MAILER.SENDER}>`;
 
 export const sendEmail = async ({
   to,
