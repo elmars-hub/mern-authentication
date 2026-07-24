@@ -6,16 +6,21 @@ import type {
 } from "../../common/interfaces/auth.interface.js";
 import {
   BadRequestException,
+  HttpException,
+  InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from "../../common/utils/catch-error.js";
 import {
+  anHourFromNow,
   calculateExpirationDate,
   fortyFiveMinutesFromNow,
   ONE_DAY_IN_MS,
+  threeMinutesAgo,
 } from "../../common/utils/date-time.js";
 import UserModel from "../../database/models/user.model.js";
 import SessionModel from "../../database/models/session.model.js";
-import VerificationCodeModel from "../../database/models/verification.js";
+import VerificationModel from "../../database/models/verification.js";
 import jwt from "jsonwebtoken";
 import type { StringValue } from "ms";
 import config from "../../config/app.config.js";
@@ -26,7 +31,11 @@ import {
   type RefreshTPayload,
 } from "../../common/utils/jwt.js";
 import { sendEmail } from "../../mailers/mailer.js";
-import { verifyEmailTemplate } from "../../mailers/templates/template.js";
+import {
+  passwordResetTemplate,
+  verifyEmailTemplate,
+} from "../../mailers/templates/template.js";
+import { HTTPSTATUS } from "../../config/http.config.js";
 
 export class AuthService {
   public async register(registerData: RegisterDto) {
@@ -175,7 +184,7 @@ export class AuthService {
   }
 
   public async verifyEmail(code: string) {
-    const validCode = await VerificationCodeModel.findOne({
+    const validCode = await VerificationModel.findOne({
       code: code,
       type: VerificationEnum.EMAIL_VERIFICATION,
       expiresAt: { $gt: new Date() },
@@ -204,6 +213,63 @@ export class AuthService {
 
     return {
       user: updatedUser,
+    };
+  }
+
+  public async forgotPassword(email: string) {
+    const user = await UserModel.findOne({
+      email: email,
+    });
+
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    //check mail rate limit is 2 email per 3mins or 10mins interval
+    const timeAgo = threeMinutesAgo();
+    const maxAttempts = 2;
+    const count = await VerificationModel.countDocuments({
+      userId: user._id,
+      type: VerificationEnum.PASSWORD_RESET,
+      createdAt: { $gt: timeAgo },
+    });
+
+    if (count >= maxAttempts) {
+      throw new HttpException(
+        "Too many request, try again later",
+        HTTPSTATUS.TOO_MANY_REQUESTS,
+        ErrorCode.AUTH_TOO_MANY_ATTEMPTS,
+      );
+    }
+
+    const expiresAt = anHourFromNow();
+    const validCode = await VerificationModel.create({
+      userId: user._id,
+      type: VerificationEnum.PASSWORD_RESET,
+      expiresAt,
+    });
+
+    const resetLink = `${config.APP_ORIGIN}/reset-password?code=${validCode.code}&exp${expiresAt.getTime()}`;
+
+    // TODO: Send email with reset link
+    // await sendEmail(user.email, "Password Reset", `Click here to reset your password: ${resetLink}`);
+
+    const { data, error } = await sendEmail({
+      to: user.email,
+      ...passwordResetTemplate(resetLink),
+    });
+
+    if (!data) {
+      throw new InternalServerErrorException(
+        "Failed to send password reset email",
+        HTTPSTATUS.INTERNAL_SERVER_ERROR,
+        ErrorCode.INTERNAL_SERVER_ERROR,
+      );
+    }
+
+    return {
+      url: resetLink,
+      emailId: data.id,
     };
   }
 }
