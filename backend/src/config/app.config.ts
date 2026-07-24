@@ -16,6 +16,8 @@ const appConfig = () => {
       : getEnv("JWT_REFRESH_SECRET");
   const JWT_REFRESH_EXPIRES_IN = getEnv("JWT_REFRESH_EXPIRES_IN", "30d");
   const MONGO_URI = getEnv("MONGO_URI");
+  const MAILER_SENDER = getEnv("MAILER_SENDER", "noreply@example.com");
+  const RESEND_API_KEY = getEnv("RESEND_API_KEY");
 
   return {
     NODE_ENV,
@@ -29,6 +31,10 @@ const appConfig = () => {
       REFRESH_EXPIRES_IN: JWT_REFRESH_EXPIRES_IN,
     },
     MONGO_URI,
+    MAILER: {
+      SENDER: MAILER_SENDER,
+      RESEND_API_KEY,
+    },
   };
 };
 

@@ -25,6 +25,8 @@ import {
   refreshTokenSignOptions,
   type RefreshTPayload,
 } from "../../common/utils/jwt.js";
+import { sendEmail } from "../../mailers/mailer.js";
+import { verifyEmailTemplate } from "../../mailers/templates/template.js";
 
 export class AuthService {
   public async register(registerData: RegisterDto) {
@@ -50,13 +52,18 @@ export class AuthService {
     const userId = newUser._id;
 
     // create a verification code
-    const verificationCode = await VerificationCodeModel.create({
+    const verification = await VerificationCodeModel.create({
       userId,
       type: VerificationEnum.EMAIL_VERIFICATION,
       expiresAt: fortyFiveMinutesFromNow(),
     });
 
     // sending verification email link
+    const verificationUrl = `${config.APP_ORIGIN}/confirm-account?code=${verification.code}`;
+    await sendEmail({
+      to: newUser.email,
+      ...verifyEmailTemplate(verificationUrl),
+    });
 
     return {
       user: newUser,
@@ -188,7 +195,7 @@ export class AuthService {
 
     if (!updatedUser) {
       throw new BadRequestException(
-        "Unable to verify emaail address",
+        "Unable to verify email address",
         ErrorCode.VERIFICATION_ERROR,
       );
     }
