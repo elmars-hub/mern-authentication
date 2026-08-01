@@ -288,7 +288,7 @@ export class AuthService {
       code: verificationCode,
       type: VerificationEnum.PASSWORD_RESET,
       expiresAt: { $gt: new Date() },
-      status: "pending",
+      status: { $ne: "failed" },
     });
 
     if (!validCode) {

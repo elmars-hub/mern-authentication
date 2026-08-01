@@ -29,12 +29,13 @@ const verificationCodeSchema = new Schema<VerificationCodeDocument>(
       type: String,
       required: true,
     },
-    expiresAt: { type: Date, required: true },
+    expiresAt: { type: Date, required: true, expires: 0 },
     createdAt: { type: Date, default: Date.now },
     status: {
       type: String,
       enum: ["pending", "failed"],
       default: "pending",
+      required: true,
     },
   },
   {
