@@ -8,6 +8,7 @@ export interface VerificationCodeDocument extends Document {
   type: VerificationEnum;
   expiresAt: Date;
   createdAt: Date;
+  status: "pending" | "failed";
 }
 
 const verificationCodeSchema = new Schema<VerificationCodeDocument>(
@@ -30,6 +31,11 @@ const verificationCodeSchema = new Schema<VerificationCodeDocument>(
     },
     expiresAt: { type: Date, required: true },
     createdAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "failed"],
+      default: "pending",
+    },
   },
   {
     timestamps: true,
